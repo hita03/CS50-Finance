@@ -48,14 +48,11 @@ infos= {
 @app.route("/")
 @login_required
 def index():
-    '''index = db.execute("SELECT symbol, name, shares, price, total FROM transactions WHERE user_id = :user_id", user_id = session["user_id"])
-    cash_query = db.execute("SELECT cash FROM users where id= :id", id= session["user_id"])
-    cash= cash_query[0]["cash"]
-    return render_template("index.html", index=index, cash=cash)
-    '''
+    rows = db.execute("SELECT symbol, name, shares, price, total FROM cumulative where UID =:UID", UID=session["user_id"])
+    cash1= db.execute("SELECT cash from users where id =:id", id= session["user_id"])
+    cash = cash1[0]["cash"]
+    return render_template("index.html", rows=rows, cash=cash)
 
-    """Show portfolio of stocks"""
-    return apology("TODO")
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -103,9 +100,11 @@ def buy():
                         db.execute("INSERT INTO cumulative(UID, symbol, name, shares, price, total) VALUES (?,?,?,?,?,?)", session["user_id"], stock["symbol"], stock["name"], shares, float(stock["price"]), total_price)
                     elif flag==1:
                         print(str(flag) +"third val")
+
                         shares1 = db.execute("SELECT sum(shares) as s from shares where UID=:UID and symbol=:symbol", UID= session['user_id'], symbol=symbol)
+                        total= int(shares1[0]["s"])*float(stock["price"])
                         db.execute("UPDATE cumulative set shares = :shares where symbol=:symbol and UID=:UID", shares= int(shares1[0]["s"]), symbol=symbol, UID=session["user_id"])
-                        db.execute("UPDATE cumulative set total = :total where symbol=:symbol and UID=:UID", total= int(shares)*float(stock["price"]), symbol=symbol, UID=session["user_id"])
+                        db.execute("UPDATE cumulative set total = :total where symbol=:symbol and UID=:UID", total=total, symbol=symbol, UID=session["user_id"])
 
                 i = len(rows) - 1
                 return render_template("bought.html", rows=rows, cash=cash,i=i)
@@ -113,14 +112,14 @@ def buy():
 
 
 
-
-
-
 @app.route("/history")
 @login_required
 def history():
-    """Show history of transactions"""
-    return apology("TODO")
+    rows = db.execute("SELECT symbol, name, shares,type, price, total,time FROM shares where UID =:UID", UID=session["user_id"])
+    cash1= db.execute("SELECT cash from users where id =:id", id= session["user_id"])
+    cash = cash1[0]["cash"]
+    return render_template("history.html", rows=rows, cash=cash)
+
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -210,6 +209,8 @@ def register():
         password= request.form.get("password")
         confirmation= request.form.get("confirmation")
         username=request.form.get("username")
+        flag1=0
+        flag2=0
         if not username:
             return apology("must provide username", 403)
         # Ensure password was submitted
@@ -219,6 +220,16 @@ def register():
             return apology("must provide confirmation password", 403)
         elif request.form.get("password")!=request.form.get("confirmation"):
             return apology("Password and confirmation password are not same", 403)
+        if len(password)>=8:
+            for i in range(len(password)):
+                if password[i].isdigit():
+                    flag1=1
+                if password[i].isalpha():
+                    flag2=1
+            if flag1!=1 and flag2!=1:
+                return apology("Password should have minimum 8 characters including digits and alphabets", 403)
+        else:
+            return apology("Password should have minimum 8 characters including digits and alphabets", 403)
 
         password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
 
@@ -247,9 +258,10 @@ def sell():
             return apology("No symbol selected.")
         if not shares2:
             return apology("No shares entered.")
-        shares1 = db.execute("SELECT sum(shares) as s from shares where UID=:UID and symbol=:symbols", UID= session['user_id'], symbols=symbol)
-        shares=int(shares1[0]["s"])
-        if int(shares2) > int(shares1[0]["s"]):
+        shares1 = db.execute("SELECT shares as s from cumulative where UID=:UID and symbol=:symbols", UID= session['user_id'], symbols=symbol)
+        shares = int(shares1[0]["s"])
+
+        if int(shares2) > shares:
             return apology("Can't afford.")
         else:
             stock = lookup(symbol)
@@ -259,13 +271,17 @@ def sell():
                 cash = cash1[0]["cash"]
                 cash= cash + total_price
                 db.execute("UPDATE users SET cash=:cash where id=:id", cash=cash, id=session["user_id"])
-                #print(str(session["user_id"]))
-               # print(str(UID))
                 db.execute("INSERT INTO shares(UID, symbol, name, shares, price, total, type) VALUES (?,?,?,?,?,?,'Sell')", session["user_id"], stock["symbol"], stock["name"], int(shares2), float(stock["price"]), total_price)
                 print("Line 247"+ str(shares))
                 shares= shares- int(shares2)
+                if shares<0:
+                    return apology("Shares Insuffecient.")
+                if shares==0:
+                    db.execute("DELETE from cumulative where symbol=:symbol and UID=:UID", symbol=symbol, UID=session["user_id"])
+                    rows = db.execute("SELECT symbol, name, shares, price, total FROM cumulative where UID =:UID", UID=session["user_id"])
+                    return render_template("sold.html", rows=rows, cash=cash)
                 print("Line 249"+ str(shares))
-                db.execute("UPDATE cumulative set shares = :share where symbol=:symbol and UID=:UID", share= shares, symbol=symbol, UID=session["user_id"])
+                db.execute("UPDATE cumulative set shares = :shares where symbol=:symbol and UID=:UID", shares= shares, symbol=symbol, UID=session["user_id"])
                 db.execute("UPDATE cumulative set total = :total where symbol=:symbol and UID=:UID", total= int(shares)*float(stock["price"]), symbol=symbol, UID=session["user_id"])
                 rows = db.execute("SELECT symbol, name, shares, price, total FROM cumulative where UID =:UID", UID=session["user_id"])
                 return render_template("sold.html", rows=rows, cash=cash)
